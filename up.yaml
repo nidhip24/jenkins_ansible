@@ -1,7 +1,103 @@
 ---
-- hosts: localhost
+- name: Deploy Jenkins on Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    namespace: jenkins
+    jenkins_pvc_name: jenkins-pv-claim
+
   tasks:
-  - name: "Install kubernetes python package"
-    pip:
-      name: kubernetes
-      state: present
+    - name: Ensure 'kubernetes' Python package is installed
+      pip:
+        name: kubernetes
+        state: present
+
+    - name: Create Jenkins namespace
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+        state: present
+
+    - name: Create Persistent Volume
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: jenkins-pv
+          spec:
+            capacity:
+              storage: 5Gi
+            accessModes:
+              - ReadWriteOnce
+            hostPath:
+              path: /data/jenkins
+
+    - name: Create Persistent Volume Claim
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{ jenkins_pvc_name }}"
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 5Gi
+
+    - name: Deploy Jenkins Deployment
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: jenkins
+            namespace: "{{ namespace }}"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: jenkins
+            template:
+              metadata:
+                labels:
+                  app: jenkins
+              spec:
+                containers:
+                  - name: jenkins
+                    image: jenkins/jenkins:lts
+                    ports:
+                      - containerPort: 8080
+                    volumeMounts:
+                      - name: jenkins-volume
+                        mountPath: /var/jenkins_home
+                volumes:
+                  - name: jenkins-volume
+                    persistentVolumeClaim:
+                      claimName: "{{ jenkins_pvc_name }}"
+
+    - name: Expose Jenkins service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: jenkins
+            namespace: "{{ namespace }}"
+          spec:
+            type: NodePort
+            ports:
+              - port: 8080
+                targetPort: 8080
+                nodePort: 30000
+            selector:
+              app: jenkins
