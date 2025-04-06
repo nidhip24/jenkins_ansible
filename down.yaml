@@ -1,7 +1,51 @@
 ---
-- hosts: localhost
+- name: Tear down Jenkins from Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    namespace: jenkins
+
   tasks:
-  - name: "remove kubernetes python package"
-    pip:
-      name: kubernetes
-      state: absent
+    - name: Ensure 'kubernetes' Python package is installed
+      pip:
+        name: kubernetes
+        state: present
+
+    - name: Delete Jenkins Service
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Service
+        name: jenkins
+        namespace: "{{ namespace }}"
+        state: absent
+
+    - name: Delete Jenkins Deployment
+      kubernetes.core.k8s:
+        api_version: apps/v1
+        kind: Deployment
+        name: jenkins
+        namespace: "{{ namespace }}"
+        state: absent
+
+    - name: Delete Jenkins PersistentVolumeClaim
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: jenkins-pv-claim
+        namespace: "{{ namespace }}"
+        state: absent
+
+    - name: Delete Jenkins PersistentVolume
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: PersistentVolume
+        name: jenkins-pv
+        state: absent
+
+    - name: Delete Jenkins Namespace
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+        state: absent
